@@ -1,0 +1,7 @@
+.cproject
+.vs/
+.vscode/
+.idea/
+.mxproject
+.project
+cmake-build-debug/
