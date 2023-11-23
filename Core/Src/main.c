@@ -34,7 +34,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define HSP_SERVO_MIN_PULSE_WIDTH 500
+#define HSP_SERVO_MAX_PULSE_WIDTH 2500
+#define HSP_SERVO_PWM_PERIOD 20000
+#define HSP_SERVO_MAX_DEG 180
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -51,11 +54,17 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+struct Servo;
+uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+struct Servo {
+  const char* pnid;
+  const TIM_HandleTypeDef *timer;
+  volatile uint32_t *ccr;
+};
 
 /* USER CODE END 0 */
 
@@ -87,17 +96,35 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_TIM3_Init();
   MX_TIM4_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
 
+  struct Servo servos[] = {
+          {"FV-02", &htim4, &TIM4->CCR1},
+          {"FV-03", &htim4, &TIM4->CCR2},
+          {"FV-04", &htim4, &TIM4->CCR3},
+          {"FV-08", &htim4, &TIM4->CCR4}
+  };
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint8_t deg = 0;
   while (1)
   {
+    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+
+    for (size_t i = 0; i < 4; i++ ) {
+      *servos[i].ccr = Deg_To_CCR(deg, &servos[i]);
+    }
+
+    deg = deg == 0 ? 90 : 0;
+    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -147,6 +174,11 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo) {
+  uint32_t arr = servo->timer->Init.Period;
+  double pulse_width = ((double)HSP_SERVO_MAX_PULSE_WIDTH-HSP_SERVO_MIN_PULSE_WIDTH)/HSP_SERVO_MAX_DEG * deg + HSP_SERVO_MIN_PULSE_WIDTH;
+  return pulse_width*arr/HSP_SERVO_PWM_PERIOD;
+}
 
 /* USER CODE END 4 */
 
