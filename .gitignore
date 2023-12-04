@@ -58,3 +58,14 @@ dkms.conf
 .mxproject
 .project
 cmake-build-debug/
+
+.DS_Store
+.settings/
+.metadata/
+.externalToolBuilders/
+CMakeCache.txt
+CMakeFiles/
+Debug/
+
+HSP_Static_Fire\ Debug.cfg 
+HSP_Static_Fire\ Debug.launch 

@@ -21,6 +21,7 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "state_machines.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -62,6 +63,7 @@ uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo);
 /* USER CODE BEGIN 0 */
 struct Servo {
   const char* pnid;
+  volatile ServoState state;
   const TIM_HandleTypeDef *timer;
   volatile uint32_t *ccr;
 };
@@ -105,26 +107,118 @@ int main(void)
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
 
   struct Servo servos[] = {
-          {"FV-02", &htim4, &TIM4->CCR1},
-          {"FV-03", &htim4, &TIM4->CCR2},
-          {"FV-04", &htim4, &TIM4->CCR3},
-          {"FV-08", &htim4, &TIM4->CCR4}
+          {"FV-02", ServoState.INIT, &htim4, &TIM4->CCR1},
+          {"FV-03", ServoState.INIT, &htim4, &TIM4->CCR2},
+          {"FV-04", ServoState.INIT, &htim4, &TIM4->CCR3},
+          {"FV-08", ServoState.INIT, &htim4, &TIM4->CCR4}
   };
+
+  InhibitorState inhibitorState = InhibitorState.INIT;
+  IgnitorState ignitorState = IgnitorState.INIT;
+
+
+  // -- INIT -- //
+  // close all servos, and set the gpi pins
+  for (size_t i = 0; i < 4; i++ ) {
+	  *servos[i].ccr = Deg_To_CCR(0, &servos[i]);
+	  *servos[i].state = ServoState.READY;
+  }
+
+  // nothing for inhibitor right now
+  inhibitorState = InhibitorState.INHIBIT;
+
+  // nothing for ignitor right now
+  ignitorState = IgnitorState.NOT_READY;
+
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint8_t deg = 0;
+
+  uint8_t fireIgnitor = 0;
+  uint8_t openServos = 0;
+
+  uint8_t ignitorFired = 0;
+  uint8_t servosOpened = 0;
+
+  uint8_t abort = 0;
+
   while (1)
   {
-    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+	  // update states
+	  if (abort) {
+		  for (size_t i = 0; i < 4; i++ ) {
+			 *servos[i].state = ServoState.NOT_READY;
+		  }
 
-    for (size_t i = 0; i < 4; i++ ) {
-      *servos[i].ccr = Deg_To_CCR(deg, &servos[i]);
-    }
+		  inhibitorState = InhibitorState.INHIBIT;
+		  ignitorState = IgnitorState.NOT_READY;
+	  }
 
-    deg = deg == 0 ? 90 : 0;
-    HAL_Delay(1000);
+	  uint8_t allServosReady = 1;
+	  for (size_t i = 0; i < 4; i++ ) {
+		  allServosReady = (*servos[i].state == ServoState.READY) && allServosReady;
+	  }
+
+	  if (!allServosReady) {
+		  inhibitorState = InhibitorState.INHIBIT;
+	  }
+
+	  // if any of the other data is bad:
+	  // inhibitorState = InhibitorState.INHIBIT;
+
+
+
+
+	  // -- actually do the state stuff -- //
+	  // close all servos and turn everything off
+	  if (abort) {
+		  for (size_t i = 0; i < 4; i++) {
+			  *servos[i].ccr = Deg_To_CCR(0, &servos[i]);
+		  }
+
+		  // potentially do inhibitor and ignitor stuff if needed here
+	  }
+
+
+	  // launch rocket
+	  if (inhibitorState.CLEAR_FOR_LAUNCH && ignitorState.READY && allServosReady && fireIgnitor) {
+		  // Fire_Ignitor();
+		  ignitorFired = 1;
+	  }
+
+	  if (inhibitorState.CLEAR_FOR_LAUNCH && ignitorState.READY && allServosReady && fireIgnitor) {
+		  // Fire_Ignitor();
+		  servosOpened = 1;
+	  }
+
+	  if (!launched && !(inhibitorState == InhibitorState.INHIBIT)) {
+		  if ()
+
+
+		  for (size_t i = 0; i < 4; i++) {
+			  if (ServoState.READY && ignitorState == IgnitorState.IGNITE) {
+
+			  }
+		  }
+
+
+
+
+	  }
+	  //
+
+
+//    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+//
+//    for (size_t i = 0; i < 4; i++ ) {
+//      *servos[i].ccr = Deg_To_CCR(deg, &servos[i]);
+//    }
+//
+//    deg = deg == 0 ? 90 : 0;
+//    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
