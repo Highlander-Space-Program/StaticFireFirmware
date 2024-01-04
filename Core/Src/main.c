@@ -149,12 +149,6 @@ int main(void)
   {
     HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
 
-    for (size_t i = 0; i < 4; i++ ) {
-      *servos[i].ccr = Deg_To_CCR(deg, &servos[i]);
-    }
-
-    deg = deg == 0 ? 90 : 0;
-
     for (int i = 0; i < 10; i++) {
     	Tick_NOS2(rx_buff[i], &servos[3]);
     	Tick_NOS1(rx_buff[i], &servos[2]);
@@ -247,7 +241,7 @@ void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case NOS2_OPEN:
-		if (cmd == NOS_VALVE_2_TOGGLE) {
+		if (cmd == NOS_VALVE_2_TOGGLE || cmd == CLOSE_ALL) {
 			nos2State = NOS2_CLOSED;
 		}
 		else {
@@ -289,7 +283,7 @@ void Tick_NOS1 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case NOS1_OPEN:
-		if (cmd == NOS_VALVE_1_TOGGLE) {
+		if (cmd == NOS_VALVE_1_TOGGLE || cmd == CLOSE_ALL) {
 			nos1State = NOS1_CLOSED;
 		}
 		else {
@@ -331,7 +325,7 @@ void Tick_N2 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case N2_OPEN:
-		if (cmd == N2_VALVE_TOGGLE) {
+		if (cmd == N2_VALVE_TOGGLE || cmd == CLOSE_ALL) {
 			n2State = N2_CLOSED;
 		}
 		else {
@@ -373,7 +367,7 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case ETOH_OPEN:
-		if (cmd == ETOH_FLOW_VALVE_TOGGLE) {
+		if (cmd == ETOH_FLOW_VALVE_TOGGLE || cmd == CLOSE_ALL) {
 			etohState = ETOH_CLOSED;
 		}
 		else {
@@ -416,7 +410,10 @@ void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]) {
 		break;
 
 		case START_OPEN_NOS:
-		if (start_tick_cnt > 5) {
+		if (cmd == CLOSE_ALL) {
+			startState = START_INIT;
+		}
+		else if (start_tick_cnt > 5) {
 			startState = START_OPEN_ALL;
 		}
 		else {
