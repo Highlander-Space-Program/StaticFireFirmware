@@ -66,6 +66,34 @@ struct Servo {
   volatile uint32_t *ccr;
 };
 
+int start_tick_cnt = 0;
+
+void Tick_NOS2 (uint8_t cmd, struct Servo *servo);
+void Tick_NOS1 (uint8_t cmd, struct Servo *servo);
+void Tick_N2 (uint8_t cmd, struct Servo *servo);
+void Tick_ETOH (uint8_t cmd, struct Servo *servo);
+void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]);
+
+enum COMMANDS {
+  NOS_VALVE_2_TOGGLE,
+  NOS_VALVE_1_TOGGLE,
+  N2_VALVE_TOGGLE,
+  ETOH_FLOW_VALVE_TOGGLE,
+  START_SEQUENCE_1,
+  FILL_SEQUENCE_1,
+  FILL_SEQUENCE_2,
+  FILL_SEQUENCE_3,
+  CLOSE_ALL,
+  IGNITE,
+  ABORT
+};
+
+enum NOS2_STATE {NOS2_INIT, NOS2_CLOSED, NOS2_OPEN} nos2State = NOS2_INIT;
+enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPEN} nos1State = NOS1_INIT;
+enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPEN} n2State = N2_INIT;
+enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_OPEN} etohState = ETOH_INIT;
+enum START_STATE {START_INIT, START_WAIT, START_OPEN_NOS, START_OPEN_ALL} startState = START_INIT;
+uint8_t rx_buff[10];
 /* USER CODE END 0 */
 
 /**
@@ -110,6 +138,8 @@ int main(void)
           {"FV-04", &htim4, &TIM4->CCR3},
           {"FV-08", &htim4, &TIM4->CCR4}
   };
+
+  HAL_UART_Receive_IT(&huart3, rx_buff, 10);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -124,7 +154,22 @@ int main(void)
     }
 
     deg = deg == 0 ? 90 : 0;
-    HAL_Delay(1000);
+
+    for (int i = 0; i < 10; i++) {
+    	Tick_NOS2(rx_buff[i], &servos[3]);
+    	Tick_NOS1(rx_buff[i], &servos[2]);
+    	Tick_N2(rx_buff[i], &servos[0]);
+    	Tick_ETOH(rx_buff[i], &servos[1]);
+    	Tick_Start_Seq(rx_buff[i], servos);
+    	//Tick_Fill_1(rx_buff[i], &servos);
+    	//Tick_Fill_2(rx_buff[i], &servos);
+    	//Tick_Fill_3(rx_buff[i], &servos);
+    	//Tick_Close(rx_buff[i], &servos);
+    	//Tick_Ignite(rx_buff[i], &servos);
+    	//Tick_Abort(rx_buff[i], &servos);
+    }
+
+    HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -180,6 +225,243 @@ uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo) {
   return pulse_width*arr/HSP_SERVO_PWM_PERIOD;
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  HAL_UART_Receive_IT(&huart3, rx_buff, 10); //You need to toggle a breakpoint on this line!
+}
+
+void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
+	//transitions
+	switch(nos2State) {
+		case NOS2_INIT:
+		nos2State = NOS2_CLOSED;
+		break;
+
+		case NOS2_CLOSED:
+		if (cmd == NOS_VALVE_2_TOGGLE) {
+			nos2State = NOS2_OPEN;
+		}
+		else {
+			nos2State = NOS2_CLOSED;
+		}
+		break;
+
+		case NOS2_OPEN:
+		if (cmd == NOS_VALVE_2_TOGGLE) {
+			nos2State = NOS2_CLOSED;
+		}
+		else {
+			nos2State = NOS2_OPEN;
+		}
+		break;
+	}
+
+	//actions
+	switch(nos2State) {
+		case NOS2_INIT:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case NOS2_CLOSED:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case NOS2_OPEN:
+		*servo->ccr = Deg_To_CCR(90, servo);
+		break;
+	}
+}
+
+void Tick_NOS1 (uint8_t cmd, struct Servo *servo) {
+	//transitions
+	switch(nos1State) {
+		case NOS1_INIT:
+		nos1State = NOS1_CLOSED;
+		break;
+
+		case NOS1_CLOSED:
+		if (cmd == NOS_VALVE_1_TOGGLE) {
+			nos1State = NOS1_OPEN;
+		}
+		else {
+			nos1State = NOS1_CLOSED;
+		}
+		break;
+
+		case NOS1_OPEN:
+		if (cmd == NOS_VALVE_1_TOGGLE) {
+			nos1State = NOS1_CLOSED;
+		}
+		else {
+			nos1State = NOS1_OPEN;
+		}
+		break;
+	}
+
+	//actions
+	switch(nos1State) {
+		case NOS1_INIT:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case NOS1_CLOSED:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case NOS1_OPEN:
+		*servo->ccr = Deg_To_CCR(90, servo);
+		break;
+	}
+}
+
+void Tick_N2 (uint8_t cmd, struct Servo *servo) {
+	//transitions
+	switch(n2State) {
+		case N2_INIT:
+		n2State = N2_CLOSED;
+		break;
+
+		case N2_CLOSED:
+		if (cmd == N2_VALVE_TOGGLE) {
+			n2State = N2_OPEN;
+		}
+		else {
+			n2State = N2_CLOSED;
+		}
+		break;
+
+		case N2_OPEN:
+		if (cmd == N2_VALVE_TOGGLE) {
+			n2State = N2_CLOSED;
+		}
+		else {
+			n2State = N2_OPEN;
+		}
+		break;
+	}
+
+	//actions
+	switch(n2State) {
+		case N2_INIT:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case N2_CLOSED:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case N2_OPEN:
+		*servo->ccr = Deg_To_CCR(90, servo);
+		break;
+	}
+}
+
+void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
+	//transitions
+	switch(etohState) {
+		case ETOH_INIT:
+		etohState = ETOH_CLOSED;
+		break;
+
+		case ETOH_CLOSED:
+		if (cmd == ETOH_FLOW_VALVE_TOGGLE) {
+			etohState = ETOH_OPEN;
+		}
+		else {
+			etohState = ETOH_CLOSED;
+		}
+		break;
+
+		case ETOH_OPEN:
+		if (cmd == ETOH_FLOW_VALVE_TOGGLE) {
+			etohState = ETOH_CLOSED;
+		}
+		else {
+			etohState = ETOH_OPEN;
+		}
+		break;
+	}
+
+	//actions
+	switch(etohState) {
+		case ETOH_INIT:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case ETOH_CLOSED:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		break;
+
+		case ETOH_OPEN:
+		*servo->ccr = Deg_To_CCR(90, servo);
+		break;
+	}
+}
+
+void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]) {
+
+	//transitions
+	switch(startState) {
+		case START_INIT:
+		startState = START_WAIT;
+		break;
+
+		case START_WAIT:
+		if (cmd == START_SEQUENCE_1) {
+			startState = START_OPEN_NOS;
+		}
+		else {
+			startState = START_WAIT;
+		}
+		break;
+
+		case START_OPEN_NOS:
+		if (start_tick_cnt > 5) {
+			startState = START_OPEN_ALL;
+		}
+		else {
+			++start_tick_cnt;
+			startState = START_OPEN_NOS;
+		}
+		break;
+
+		case START_OPEN_ALL:
+		if (cmd == CLOSE_ALL || cmd == ABORT) {
+			startState = START_INIT;
+		}
+		else {
+			startState = START_OPEN_ALL;
+		}
+		break;
+	}
+
+	//actions
+	switch(startState) {
+		case START_INIT:
+		for (int i = 0; i < 4; ++i) {
+			*servos[i]->ccr = Deg_To_CCR(0, servos[i]);
+		}
+		start_tick_cnt = 0;
+		break;
+
+		case START_WAIT:
+		for (int i = 0; i < 4; ++i) {
+			*servos[i]->ccr = Deg_To_CCR(0, servos[i]);
+		}
+		break;
+
+		case START_OPEN_NOS:
+		*servos[2]->ccr = Deg_To_CCR(90, servos[2]);
+		*servos[3]->ccr = Deg_To_CCR(90, servos[3]);
+		break;
+
+		case START_OPEN_ALL:
+		for (int i = 0; i < 4; ++i) {
+			*servos[i]->ccr = Deg_To_CCR(90, servos[i]);
+		}
+		break;
+	}
+}
 /* USER CODE END 4 */
 
 /**
