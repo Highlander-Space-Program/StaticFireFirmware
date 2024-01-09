@@ -72,7 +72,7 @@ void Tick_NOS2 (uint8_t cmd, struct Servo *servo);
 void Tick_NOS1 (uint8_t cmd, struct Servo *servo);
 void Tick_N2 (uint8_t cmd, struct Servo *servo);
 void Tick_ETOH (uint8_t cmd, struct Servo *servo);
-void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]);
+void Tick_Start_Seq(uint8_t cmd, struct Servo servos[]);
 
 enum COMMANDS {
   NOS_VALVE_2_TOGGLE,
@@ -93,7 +93,7 @@ enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPEN} nos1State = NOS1_INIT;
 enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPEN} n2State = N2_INIT;
 enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_OPEN} etohState = ETOH_INIT;
 enum START_STATE {START_INIT, START_WAIT, START_OPEN_NOS, START_OPEN_ALL} startState = START_INIT;
-uint8_t rx_buff[10];
+uint8_t rx_buff[1];
 /* USER CODE END 0 */
 
 /**
@@ -147,23 +147,35 @@ int main(void)
   uint8_t deg = 0;
   while (1)
   {
-    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
 
-    for (int i = 0; i < 10; i++) {
-    	Tick_NOS2(rx_buff[i], &servos[3]);
-    	Tick_NOS1(rx_buff[i], &servos[2]);
-    	Tick_N2(rx_buff[i], &servos[0]);
+	HAL_Delay(1000);
+
+    rx_buff[0] = ETOH_FLOW_VALVE_TOGGLE;
+
+    int i = 0;
+
+    	//Tick_NOS2(rx_buff[i], &servos[3]);
+    	//Tick_NOS1(rx_buff[i], &servos[2]);
+    	//Tick_N2(rx_buff[i], &servos[0]);
     	Tick_ETOH(rx_buff[i], &servos[1]);
-    	Tick_Start_Seq(rx_buff[i], servos);
+    	//Tick_Start_Seq(rx_buff[i], servos);
     	//Tick_Fill_1(rx_buff[i], &servos);
     	//Tick_Fill_2(rx_buff[i], &servos);
     	//Tick_Fill_3(rx_buff[i], &servos);
     	//Tick_Close(rx_buff[i], &servos);
     	//Tick_Ignite(rx_buff[i], &servos);
     	//Tick_Abort(rx_buff[i], &servos);
-    }
 
-    HAL_Delay(100);
+    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+
+    HAL_Delay(1000);
+
+	/*
+	*servos[3].ccr = Deg_To_CCR(90, &servos[3]);
+	HAL_Delay(1000);
+	*servos[3].ccr = Deg_To_CCR(0, &servos[3]);
+	HAL_Delay(1000);
+	*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -392,7 +404,7 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 	}
 }
 
-void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]) {
+void Tick_Start_Seq(uint8_t cmd, struct Servo servos[]) {
 
 	//transitions
 	switch(startState) {
@@ -436,25 +448,27 @@ void Tick_Start_Seq(uint8_t cmd, struct Servo *servos[4]) {
 	switch(startState) {
 		case START_INIT:
 		for (int i = 0; i < 4; ++i) {
-			*servos[i]->ccr = Deg_To_CCR(0, servos[i]);
+			const struct Servo *currServo = &servos[i];
+			servos[i].ccr = Deg_To_CCR(0, currServo);
 		}
 		start_tick_cnt = 0;
 		break;
 
 		case START_WAIT:
 		for (int i = 0; i < 4; ++i) {
-			*servos[i]->ccr = Deg_To_CCR(0, servos[i]);
+			const struct Servo *currServo = &servos[i];
+			servos[i].ccr = Deg_To_CCR(0, currServo);
 		}
 		break;
 
 		case START_OPEN_NOS:
-		*servos[2]->ccr = Deg_To_CCR(90, servos[2]);
-		*servos[3]->ccr = Deg_To_CCR(90, servos[3]);
+		servos[2].ccr = Deg_To_CCR(90, &servos[2]);
+		servos[3].ccr = Deg_To_CCR(90, &servos[3]);
 		break;
 
 		case START_OPEN_ALL:
 		for (int i = 0; i < 4; ++i) {
-			*servos[i]->ccr = Deg_To_CCR(90, servos[i]);
+			servos[i].ccr = Deg_To_CCR(90, &servos[i]);
 		}
 		break;
 	}
