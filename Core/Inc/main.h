@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2023 STMicroelectronics.
+  * Copyright (c) 2024 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -59,6 +59,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define BUILTIN_LED_Pin GPIO_PIN_1
 #define BUILTIN_LED_GPIO_Port GPIOC
+#define Igniter_Pin GPIO_PIN_3
+#define Igniter_GPIO_Port GPIOC
 
 /* USER CODE BEGIN Private defines */
 
