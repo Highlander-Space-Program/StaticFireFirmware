@@ -93,7 +93,7 @@ enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPEN} nos1State = NOS1_INIT;
 enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPEN} n2State = N2_INIT;
 enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_OPEN} etohState = ETOH_INIT;
 enum START_STATE {START_INIT, START_WAIT, START_OPEN_NOS, START_OPEN_ALL} startState = START_INIT;
-uint8_t rx_buff[10];
+uint8_t rx_buff[1];
 /* USER CODE END 0 */
 
 /**
@@ -149,24 +149,24 @@ int main(void)
   {
     HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
 
-    // rx_buff[0] = NOS_VALVE_2_TOGGLE;
+	HAL_Delay(1000);
 
 
-    for (int i = 0; i < 10; i++) {
-    	Tick_NOS2(rx_buff[i], &servos[3]);
-    	Tick_NOS1(rx_buff[i], &servos[2]);
-    	Tick_N2(rx_buff[i], &servos[0]);
+    	//Tick_NOS2(rx_buff[i], &servos[3]);
+    	//Tick_NOS1(rx_buff[i], &servos[2]);
+    	//Tick_N2(rx_buff[i], &servos[0]);
     	Tick_ETOH(rx_buff[i], &servos[1]);
-    	Tick_Start_Seq(rx_buff[i], servos);
+    	//Tick_Start_Seq(rx_buff[i], servos);
     	//Tick_Fill_1(rx_buff[i], &servos);
     	//Tick_Fill_2(rx_buff[i], &servos);
     	//Tick_Fill_3(rx_buff[i], &servos);
     	//Tick_Close(rx_buff[i], &servos);
     	//Tick_Ignite(rx_buff[i], &servos);
     	//Tick_Abort(rx_buff[i], &servos);
-    }
 
-    HAL_Delay(1000);
+    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+
+    HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
