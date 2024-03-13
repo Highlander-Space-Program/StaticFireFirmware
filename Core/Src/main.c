@@ -21,6 +21,7 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "stdbool.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -66,34 +67,55 @@ struct Servo {
   volatile uint32_t *ccr;
 };
 
-int start_tick_cnt = 0;
+bool etoh_just_opened = false;
+int etoh_cnt = 0;
+bool isCloseAll = false;
+bool isAborted = false;
+bool isServoEnabled = false;
+bool isStarted = false;
+uint8_t ack = 0x00;
 
 void Tick_NOS2 (uint8_t cmd, struct Servo *servo);
 void Tick_NOS1 (uint8_t cmd, struct Servo *servo);
 void Tick_N2 (uint8_t cmd, struct Servo *servo);
 void Tick_ETOH (uint8_t cmd, struct Servo *servo);
-void Tick_Start_Seq(uint8_t cmd, struct Servo servos[]);
+void Tick_Igniter(uint8_t cmd);
+void PWM_Enable();
+void PWM_Disable();
+uint8_t Create_Ack();
 
 enum COMMANDS {
-  NOS_VALVE_2_TOGGLE,
-  NOS_VALVE_1_TOGGLE,
-  N2_VALVE_TOGGLE,
-  ETOH_FLOW_VALVE_TOGGLE,
-  START_SEQUENCE_1,
-  FILL_SEQUENCE_1,
-  FILL_SEQUENCE_2,
-  FILL_SEQUENCE_3,
-  CLOSE_ALL,
-  IGNITE,
-  ABORT
+  OPEN_NOS2 = 0,
+  CLOSE_NOS2 = 1,
+  OPEN_NOS1 = 2,
+  CLOSE_NOS1 = 3,
+  OPEN_N2 = 4,
+  CLOSE_N2 = 5,
+  OPEN_ETOH = 6,
+  CLOSE_ETOH = 7,
+  START_1 = 8,
+  FILL_1 = 9,
+  FILL_2 = 10,
+  FILL_3 = 11,
+  CLOSE_ALL = 12,
+  DECLOSE_ALL = 13,
+  ACTIVATE_IGNITER = 14,
+  DEACTIVATE_IGNITER = 15,
+  ABORT = 16,
+  ACTIVATE_SERVOS = 17,
+  DEACTIVATE_SERVOS = 18,
+  DEABORT = 19,
+  CHECK_STATE = 20,
+  DESTART = 21
 };
 
-enum NOS2_STATE {NOS2_INIT, NOS2_CLOSED, NOS2_OPEN} nos2State = NOS2_INIT;
-enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPEN} nos1State = NOS1_INIT;
-enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPEN} n2State = N2_INIT;
-enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_OPEN} etohState = ETOH_INIT;
-enum START_STATE {START_INIT, START_WAIT, START_OPEN_NOS, START_OPEN_ALL} startState = START_INIT;
+enum NOS2_STATE {NOS2_INIT, NOS2_CLOSED, NOS2_OPENED} nos2State = NOS2_INIT;
+enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPENED} nos1State = NOS1_INIT;
+enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPENED} n2State = N2_INIT;
+enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_WAIT, ETOH_OPENED} etohState = ETOH_INIT;
+enum IGNITER_STATE {IGNITER_INIT, IGNITER_DEACTIVATED, IGNITER_ACTIVATED} igniterState = IGNITER_INIT;
 uint8_t rx_buff[1];
+uint8_t tx_buff[1];
 /* USER CODE END 0 */
 
 /**
@@ -126,45 +148,75 @@ int main(void)
   MX_GPIO_Init();
   MX_TIM4_Init();
   MX_USART3_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+
 
   struct Servo servos[] = {
           {"FV-02", &htim4, &TIM4->CCR1},
           {"FV-03", &htim4, &TIM4->CCR2},
           {"FV-04", &htim4, &TIM4->CCR3},
-          {"FV-08", &htim4, &TIM4->CCR4}
+          {"FV-08", &htim3, &TIM3->CCR1}
   };
+  HAL_UART_Receive_IT(&huart3, rx_buff, 1);
 
-  HAL_UART_Receive_IT(&huart3, rx_buff, 10);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t deg = 0;
   while (1)
   {
+	if (rx_buff[0] == ACTIVATE_SERVOS) {
+		PWM_Enable();
+		isServoEnabled = true;
+	}
+	else if (rx_buff[0] == DEACTIVATE_SERVOS) {
+		PWM_Disable();
+		isServoEnabled = false;
+	}
+
+	if (rx_buff[0] == ABORT) {
+		PWM_Disable();
+		isServoEnabled = false;
+		isAborted = true;
+	}
+	else if (rx_buff[0] == DEABORT) {
+		isAborted = false;
+	}
+
+	if (rx_buff[0] == CLOSE_ALL) {
+		isCloseAll = true;
+	}
+	else if (rx_buff[0] == DECLOSE_ALL) {
+		isCloseAll = false;
+	}
+
+	if (rx_buff[0] == START_1) {
+		isStarted = true;
+	}
+	if (rx_buff[0] == DESTART) {
+		isStarted = false;
+	}
+
+	if (isServoEnabled && !isAborted) {
+		Tick_NOS2(rx_buff[0], &servos[3]);
+		Tick_NOS1(rx_buff[0], &servos[2]);
+		Tick_N2(rx_buff[0], &servos[0]);
+		Tick_ETOH(rx_buff[0], &servos[1]);
+	}
+    Tick_Igniter(rx_buff[0]);
+
+
+
+    if (rx_buff[0] != 0xF0) {
+    	Create_Ack();
+    	tx_buff[0] = ack;
+    	HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
+    	ack = 0x00;
+    }
     HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
-
-	HAL_Delay(1000);
-
-
-    	//Tick_NOS2(rx_buff[i], &servos[3]);
-    	//Tick_NOS1(rx_buff[i], &servos[2]);
-    	//Tick_N2(rx_buff[i], &servos[0]);
-    	Tick_ETOH(rx_buff[i], &servos[1]);
-    	//Tick_Start_Seq(rx_buff[i], servos);
-    	//Tick_Fill_1(rx_buff[i], &servos);
-    	//Tick_Fill_2(rx_buff[i], &servos);
-    	//Tick_Fill_3(rx_buff[i], &servos);
-    	//Tick_Close(rx_buff[i], &servos);
-    	//Tick_Ignite(rx_buff[i], &servos);
-    	//Tick_Abort(rx_buff[i], &servos);
-
-    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+    rx_buff[0] = 0xF0;
 
     HAL_Delay(100);
     /* USER CODE END WHILE */
@@ -224,7 +276,7 @@ uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  HAL_UART_Receive_IT(&huart3, rx_buff, 10); //You need to toggle a breakpoint on this line!
+  HAL_UART_Receive_IT(&huart3, rx_buff, 1);
 }
 
 void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
@@ -235,20 +287,21 @@ void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case NOS2_CLOSED:
-		if (cmd == NOS_VALVE_2_TOGGLE) {
-			nos2State = NOS2_OPEN;
+		if (((cmd == OPEN_NOS2 && !isCloseAll) && !isAborted)
+			|| ((cmd == START_1 && !isCloseAll) && !isAborted)) {
+			nos2State = NOS2_OPENED;
 		}
 		else {
 			nos2State = NOS2_CLOSED;
 		}
 		break;
 
-		case NOS2_OPEN:
-		if (cmd == NOS_VALVE_2_TOGGLE || cmd == CLOSE_ALL) {
+		case NOS2_OPENED:
+		if ((cmd == CLOSE_NOS2 || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
 			nos2State = NOS2_CLOSED;
 		}
 		else {
-			nos2State = NOS2_OPEN;
+			nos2State = NOS2_OPENED;
 		}
 		break;
 	}
@@ -263,7 +316,7 @@ void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
 		*servo->ccr = Deg_To_CCR(0, servo);
 		break;
 
-		case NOS2_OPEN:
+		case NOS2_OPENED:
 		*servo->ccr = Deg_To_CCR(90, servo);
 		break;
 	}
@@ -277,20 +330,20 @@ void Tick_NOS1 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case NOS1_CLOSED:
-		if (cmd == NOS_VALVE_1_TOGGLE) {
-			nos1State = NOS1_OPEN;
+		if (((cmd == OPEN_NOS1 && !isCloseAll) && !isAborted && !isStarted)) {
+			nos1State = NOS1_OPENED;
 		}
 		else {
 			nos1State = NOS1_CLOSED;
 		}
 		break;
 
-		case NOS1_OPEN:
-		if (cmd == NOS_VALVE_1_TOGGLE || cmd == CLOSE_ALL) {
+		case NOS1_OPENED:
+		if ((cmd == CLOSE_NOS1 || cmd == CLOSE_ALL || cmd == START_1) && !isAborted) {
 			nos1State = NOS1_CLOSED;
 		}
 		else {
-			nos1State = NOS1_OPEN;
+			nos1State = NOS1_OPENED;
 		}
 		break;
 	}
@@ -305,7 +358,7 @@ void Tick_NOS1 (uint8_t cmd, struct Servo *servo) {
 		*servo->ccr = Deg_To_CCR(0, servo);
 		break;
 
-		case NOS1_OPEN:
+		case NOS1_OPENED:
 		*servo->ccr = Deg_To_CCR(90, servo);
 		break;
 	}
@@ -319,20 +372,21 @@ void Tick_N2 (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case N2_CLOSED:
-		if (cmd == N2_VALVE_TOGGLE) {
-			n2State = N2_OPEN;
+		if (((cmd == OPEN_N2 && !isCloseAll) && !isAborted)
+			|| ((cmd == START_1 && !isCloseAll) && !isAborted)) {
+			n2State = N2_OPENED;
 		}
 		else {
 			n2State = N2_CLOSED;
 		}
 		break;
 
-		case N2_OPEN:
-		if (cmd == N2_VALVE_TOGGLE || cmd == CLOSE_ALL) {
+		case N2_OPENED:
+		if ((cmd == CLOSE_N2 || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
 			n2State = N2_CLOSED;
 		}
 		else {
-			n2State = N2_OPEN;
+			n2State = N2_OPENED;
 		}
 		break;
 	}
@@ -347,7 +401,7 @@ void Tick_N2 (uint8_t cmd, struct Servo *servo) {
 		*servo->ccr = Deg_To_CCR(0, servo);
 		break;
 
-		case N2_OPEN:
+		case N2_OPENED:
 		*servo->ccr = Deg_To_CCR(90, servo);
 		break;
 	}
@@ -361,20 +415,40 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case ETOH_CLOSED:
-		if (cmd == ETOH_FLOW_VALVE_TOGGLE) {
-			etohState = ETOH_OPEN;
+		if (cmd == START_1) {
+			etohState = ETOH_WAIT;
+		}
+		else if ((cmd == OPEN_ETOH && !isCloseAll) && !isAborted && !isStarted) {
+			etohState = ETOH_OPENED;
 		}
 		else {
 			etohState = ETOH_CLOSED;
 		}
 		break;
 
-		case ETOH_OPEN:
-		if (cmd == ETOH_FLOW_VALVE_TOGGLE || cmd == CLOSE_ALL) {
+		case ETOH_WAIT:
+		if (cmd == ABORT) {
+			etohState = ETOH_CLOSED;
+		}
+		else if (etoh_cnt > 4) {
+			etoh_just_opened = true;
+			etohState = ETOH_OPENED;
+		}
+		break;
+
+		case ETOH_OPENED:
+		if (etoh_just_opened == true) {
+			etoh_just_opened = false;
+			ack = 0x00;
+			Create_Ack();
+			tx_buff[0] = ack;
+			HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
+		}
+		if ((cmd == CLOSE_ETOH || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
 			etohState = ETOH_CLOSED;
 		}
 		else {
-			etohState = ETOH_OPEN;
+			etohState = ETOH_OPENED;
 		}
 		break;
 	}
@@ -383,87 +457,106 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 	switch(etohState) {
 		case ETOH_INIT:
 		*servo->ccr = Deg_To_CCR(0, servo);
+		etoh_cnt = 0;
 		break;
 
 		case ETOH_CLOSED:
 		*servo->ccr = Deg_To_CCR(0, servo);
+		etoh_cnt = 0;
 		break;
 
-		case ETOH_OPEN:
+		case ETOH_WAIT:
+		*servo->ccr = Deg_To_CCR(0, servo);
+		++etoh_cnt;
+		break;
+
+		case ETOH_OPENED:
 		*servo->ccr = Deg_To_CCR(90, servo);
 		break;
 	}
 }
 
-void Tick_Start_Seq(uint8_t cmd, struct Servo servos[]) {
-
+void Tick_Igniter(uint8_t cmd) {
 	//transitions
-	switch(startState) {
-		case START_INIT:
-		startState = START_WAIT;
+	switch(igniterState) {
+		case IGNITER_INIT:
+		igniterState = IGNITER_DEACTIVATED;
 		break;
 
-		case START_WAIT:
-		if (cmd == START_SEQUENCE_1) {
-			startState = START_OPEN_NOS;
+		case IGNITER_DEACTIVATED:
+		if (cmd == ACTIVATE_IGNITER && (!isCloseAll && !isAborted)) {
+			igniterState = IGNITER_ACTIVATED;
 		}
 		else {
-			startState = START_WAIT;
-		}
-		break;
-
-		case START_OPEN_NOS:
-		if (cmd == CLOSE_ALL) {
-			startState = START_INIT;
-		}
-		else if (start_tick_cnt > 5) {
-			startState = START_OPEN_ALL;
-		}
-		else {
-			++start_tick_cnt;
-			startState = START_OPEN_NOS;
+			igniterState = IGNITER_DEACTIVATED;
 		}
 		break;
 
-		case START_OPEN_ALL:
-		if (cmd == CLOSE_ALL || cmd == ABORT) {
-			startState = START_INIT;
+		case IGNITER_ACTIVATED:
+		if (((cmd == DEACTIVATE_IGNITER || cmd == CLOSE_ALL || isCloseAll)  && !isStarted) || cmd == ABORT) {
+			igniterState = IGNITER_DEACTIVATED;
 		}
 		else {
-			startState = START_OPEN_ALL;
+			igniterState = IGNITER_ACTIVATED;
 		}
 		break;
 	}
 
 	//actions
-	switch(startState) {
-		case START_INIT:
-		for (int i = 0; i < 4; ++i) {
-			const struct Servo *currServo = &servos[i];
-			servos[i].ccr = Deg_To_CCR(0, currServo);
-		}
-		start_tick_cnt = 0;
+	switch(igniterState) {
+		case IGNITER_INIT:
+		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_RESET);
 		break;
 
-		case START_WAIT:
-		for (int i = 0; i < 4; ++i) {
-			const struct Servo *currServo = &servos[i];
-			servos[i].ccr = Deg_To_CCR(0, currServo);
-		}
+		case IGNITER_DEACTIVATED:
+		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_RESET);
 		break;
 
-		case START_OPEN_NOS:
-		servos[2].ccr = Deg_To_CCR(90, &servos[2]);
-		servos[3].ccr = Deg_To_CCR(90, &servos[3]);
-		break;
-
-		case START_OPEN_ALL:
-		for (int i = 0; i < 4; ++i) {
-			servos[i].ccr = Deg_To_CCR(90, &servos[i]);
-		}
+		case IGNITER_ACTIVATED:
+		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_SET);
 		break;
 	}
 }
+
+void PWM_Enable() {
+	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
+	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
+	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
+	  //HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
+	  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+}
+
+void PWM_Disable() {
+	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
+	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
+	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);
+	  //HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
+	  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+}
+
+uint8_t Create_Ack() {
+	if (nos2State == NOS2_OPENED) {
+		++ack;
+	}
+	ack = ack << 1;
+	if (nos1State == NOS1_OPENED) {
+		++ack;
+	}
+	ack = ack << 1;
+	if (n2State == N2_OPENED) {
+		++ack;
+	}
+	ack = ack << 1;
+	if (etohState == ETOH_OPENED) {
+		++ack;
+	}
+	ack = ack << 1;
+	if (igniterState == IGNITER_ACTIVATED) {
+		++ack;
+	}
+	return ack;
+}
+
 /* USER CODE END 4 */
 
 /**
