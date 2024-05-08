@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<data>
+  <loop>false</loop>
+  <repeat_times>1</repeat_times>
+  <repeat_period>500</repeat_period>
+  <packets_list>
+    <packet name="NOS2 OPEN">
+      <payload>00</payload>
+    </packet>
+    <packet name="NOS2 CLOSE">
+      <payload>01</payload>
+    </packet>
+    <packet name="NOS1 OPEN">
+      <payload>02</payload>
+    </packet>
+    <packet name="NOS1 CLOSE">
+      <payload>03</payload>
+    </packet>
+    <packet name="N2 OPEN">
+      <payload>04</payload>
+    </packet>
+    <packet name="N2 CLOSE">
+      <payload>05</payload>
+    </packet>
+    <packet name="ETOH OPEN">
+      <payload>06</payload>
+    </packet>
+    <packet name="ETOH CLOSE">
+      <payload>07</payload>
+    </packet>
+    <packet name="START1">
+      <payload>08</payload>
+    </packet>
+    <packet name="FILL 1">
+      <payload>09</payload>
+    </packet>
+    <packet name="FILL 2">
+      <payload>0A</payload>
+    </packet>
+    <packet name="FILL 3">
+      <payload>0B</payload>
+    </packet>
+    <packet name="CLOSE_ALL">
+      <payload>0C</payload>
+    </packet>
+    <packet name="DECLOSE ALL">
+      <payload>0D</payload>
+    </packet>
+    <packet name="ACTIVATE_IGNITER">
+      <payload>0E</payload>
+    </packet>
+    <packet name="DEACTIVATE IGNITER">
+      <payload>0F</payload>
+    </packet>
+    <packet name="ABORT">
+      <payload>10</payload>
+    </packet>
+    <packet name="ACTIVATE SERVOS">
+      <payload>11</payload>
+    </packet>
+    <packet name="DEACTIVATE SERVOS">
+      <payload>12</payload>
+    </packet>
+    <packet name="DEABORT">
+      <payload>13</payload>
+    </packet>
+    <packet name="CHECK STATE">
+      <payload>14</payload>
+    </packet>
+  </packets_list>
+</data>
