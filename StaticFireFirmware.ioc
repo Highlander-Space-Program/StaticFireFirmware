@@ -10,9 +10,10 @@ Mcu.Family=STM32F4
 Mcu.IP0=NVIC
 Mcu.IP1=RCC
 Mcu.IP2=SYS
-Mcu.IP3=TIM4
-Mcu.IP4=USART3
-Mcu.IPNb=5
+Mcu.IP3=TIM3
+Mcu.IP4=TIM4
+Mcu.IP5=USART3
+Mcu.IPNb=6
 Mcu.Name=STM32F405RGTx
 Mcu.Package=LQFP64
 Mcu.Pin0=PC1
@@ -120,11 +121,8 @@ RCC.VCOI2SOutputFreq_Value=192000000
 RCC.VCOInputFreq_Value=1000000
 RCC.VCOOutputFreq_Value=192000000
 RCC.VcooutputI2S=96000000
-<<<<<<< HEAD:HSP_Static_Fire.ioc
-=======
 SH.S_TIM3_CH1.0=TIM3_CH1,PWM Generation1 CH1
 SH.S_TIM3_CH1.ConfNb=1
->>>>>>> alex/feature/servoSM:StaticFireFirmware.ioc
 SH.S_TIM4_CH1.0=TIM4_CH1,PWM Generation1 CH1
 SH.S_TIM4_CH1.ConfNb=1
 SH.S_TIM4_CH2.0=TIM4_CH2,PWM Generation2 CH2
@@ -133,13 +131,8 @@ SH.S_TIM4_CH3.0=TIM4_CH3,PWM Generation3 CH3
 SH.S_TIM4_CH3.ConfNb=1
 SH.S_TIM4_CH4.0=TIM4_CH4,PWM Generation4 CH4
 SH.S_TIM4_CH4.ConfNb=1
-<<<<<<< HEAD:HSP_Static_Fire.ioc
-=======
 TIM3.Channel-PWM\ Generation1\ CH1=TIM_CHANNEL_1
-TIM3.IPParameters=Channel-PWM Generation1 CH1,Prescaler,Period
-TIM3.Period=63999
-TIM3.Prescaler=4
->>>>>>> alex/feature/servoSM:StaticFireFirmware.ioc
+TIM3.IPParameters=Channel-PWM Generation1 CH1
 TIM4.Channel-PWM\ Generation1\ CH1=TIM_CHANNEL_1
 TIM4.Channel-PWM\ Generation2\ CH2=TIM_CHANNEL_2
 TIM4.Channel-PWM\ Generation3\ CH3=TIM_CHANNEL_3
