@@ -21,11 +21,11 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-#include "stdbool.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -74,6 +74,10 @@ bool isAborted = false;
 bool isServoEnabled = false;
 bool isStarted = false;
 uint8_t ack = 0x00;
+uint8_t ack_frame[19];
+uint8_t cmd;
+int tick_cnt = 0;
+uint8_t rxByte;
 
 void Tick_NOS2 (uint8_t cmd, struct Servo *servo);
 void Tick_NOS1 (uint8_t cmd, struct Servo *servo);
@@ -83,6 +87,8 @@ void Tick_Igniter(uint8_t cmd);
 void PWM_Enable();
 void PWM_Disable();
 uint8_t Create_Ack();
+void Init_Ack_Frame();
+void Set_Payload(uint8_t payload);
 
 enum COMMANDS {
   OPEN_NOS2 = 0,
@@ -114,8 +120,11 @@ enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPENED} nos1State = NOS1_INIT;
 enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPENED} n2State = N2_INIT;
 enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_WAIT, ETOH_OPENED} etohState = ETOH_INIT;
 enum IGNITER_STATE {IGNITER_INIT, IGNITER_DEACTIVATED, IGNITER_ACTIVATED} igniterState = IGNITER_INIT;
-uint8_t rx_buff[1];
-uint8_t tx_buff[1];
+volatile uint8_t rx_buff[17];
+volatile uint8_t rx_buff_index = 0;
+volatile bool frame_started = false;
+uint8_t receivedByte = 0x00;
+volatile bool frame_received = false;
 /* USER CODE END 0 */
 
 /**
@@ -158,7 +167,8 @@ int main(void)
           {"FV-04", &htim4, &TIM4->CCR3},
           {"FV-08", &htim3, &TIM3->CCR1}
   };
-  HAL_UART_Receive_IT(&huart3, rx_buff, 1);
+  HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+  Init_Ack_Frame();
 
 
   /* USER CODE END 2 */
@@ -167,57 +177,63 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	if (rx_buff[0] == ACTIVATE_SERVOS) {
+    if (frame_received == true) {
+	   cmd = rx_buff[15]; // Set cmd to the payload byte of the received frame
+       frame_received = false; // Reset the frame received flag
+    }
+	if (cmd == ACTIVATE_SERVOS) {
 		PWM_Enable();
 		isServoEnabled = true;
 	}
-	else if (rx_buff[0] == DEACTIVATE_SERVOS) {
+	else if (cmd == DEACTIVATE_SERVOS) {
 		PWM_Disable();
 		isServoEnabled = false;
 	}
 
-	if (rx_buff[0] == ABORT) {
+	if (cmd == ABORT) {
 		PWM_Disable();
 		isServoEnabled = false;
 		isAborted = true;
 	}
-	else if (rx_buff[0] == DEABORT) {
+	else if (cmd == DEABORT) {
 		isAborted = false;
 	}
 
-	if (rx_buff[0] == CLOSE_ALL) {
+	if (cmd == CLOSE_ALL) {
 		isCloseAll = true;
 	}
-	else if (rx_buff[0] == DECLOSE_ALL) {
+	else if (cmd == DECLOSE_ALL) {
 		isCloseAll = false;
 	}
 
-	if (rx_buff[0] == START_1) {
+	if (cmd == START_1) {
 		isStarted = true;
 	}
-	if (rx_buff[0] == DESTART) {
+	if (cmd == DESTART) {
 		isStarted = false;
 	}
 
 	if (isServoEnabled && !isAborted) {
-		Tick_NOS2(rx_buff[0], &servos[3]);
-		Tick_NOS1(rx_buff[0], &servos[2]);
-		Tick_N2(rx_buff[0], &servos[0]);
-		Tick_ETOH(rx_buff[0], &servos[1]);
+		Tick_NOS2(cmd, &servos[3]);
+		Tick_NOS1(cmd, &servos[2]);
+		Tick_N2(cmd, &servos[0]);
+		Tick_ETOH(cmd, &servos[1]);
 	}
-    Tick_Igniter(rx_buff[0]);
+    Tick_Igniter(cmd);
 
 
 
-    if (rx_buff[0] != 0xF0) {
+    if (cmd != 0xF0 || tick_cnt >= 50) {
     	Create_Ack();
-    	tx_buff[0] = ack;
-    	HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
+    	Set_Payload(ack);
     	ack = 0x00;
+    	tick_cnt = 0;
+    	HAL_UART_Transmit_IT(&huart3, ack_frame, 19);
     }
     HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
-    rx_buff[0] = 0xF0;
+    cmd = 0xF0;
 
+    ++tick_cnt;
     HAL_Delay(100);
     /* USER CODE END WHILE */
 
@@ -276,7 +292,23 @@ uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  HAL_UART_Receive_IT(&huart3, rx_buff, 1);
+    receivedByte = huart->Instance->DR;
+
+    if (receivedByte == 0x7E) {
+        frame_started = true;
+        rx_buff_index = 0;
+    }
+
+    if (frame_started && rx_buff_index < 17) {
+        rx_buff[rx_buff_index++] = receivedByte;
+
+        if (rx_buff_index >= 17) {
+            frame_started = false; // Reset the frame_started flag
+            frame_received = true;
+        }
+    }
+
+    HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 }
 
 void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
@@ -441,8 +473,8 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 			etoh_just_opened = false;
 			ack = 0x00;
 			Create_Ack();
-			tx_buff[0] = ack;
-			HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
+			Set_Payload(ack);
+			HAL_UART_Transmit_IT(&huart3, ack_frame, 19);
 		}
 		if ((cmd == CLOSE_ETOH || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
 			etohState = ETOH_CLOSED;
@@ -556,6 +588,39 @@ uint8_t Create_Ack() {
 	}
 	return ack;
 }
+
+void Init_Ack_Frame() {
+	ack_frame[0] = 0x7E;
+	ack_frame[1] = 0x00;
+	ack_frame[2] = 0x0F;
+	ack_frame[3] = 0x10;
+	ack_frame[4] = 0x01;
+	ack_frame[5] = 0x00;
+	ack_frame[6] = 0x13;
+	ack_frame[7] = 0xA2;
+	ack_frame[8] = 0x00;
+	ack_frame[9] = 0x42;
+	ack_frame[10] = 0x38;
+	ack_frame[11] = 0xA2;
+	ack_frame[12] = 0xC4;
+	ack_frame[13] = 0xFF;
+	ack_frame[14] = 0xFE;
+	ack_frame[15] = 0x00;
+	ack_frame[16] = 0x00;
+	ack_frame[17] = 0x00;
+	ack_frame[18] = 0x13;
+}
+
+void Set_Payload(uint8_t payload) {
+	ack_frame[17] = payload;
+	uint8_t temp_sum = 0x00;
+	for (int i = 3; i < 18; ++i) {
+		temp_sum += ack_frame[i];
+	}
+	ack_frame[18] = 0xFF - temp_sum;
+}
+
+
 
 /* USER CODE END 4 */
 
