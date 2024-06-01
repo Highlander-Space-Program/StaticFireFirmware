@@ -68,6 +68,7 @@ struct Servo {
 
 bool etoh_just_opened = false;
 int etoh_cnt = 0;
+int ticks = 0;
 bool isCloseAll = false;
 bool isAborted = false;
 bool isServoEnabled = false;
@@ -208,15 +209,16 @@ int main(void)
 
 
 
-    if (rx_buff[0] != 0xF0) {
+    if (rx_buff[0] != 0xF0 || ticks >= 50) {
     	Create_Ack();
     	tx_buff[0] = ack;
     	HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
     	ack = 0x00;
+    	ticks = 0;
     }
     HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
     rx_buff[0] = 0xF0;
-
+    ++ticks;
     HAL_Delay(100);
     /* USER CODE END WHILE */
 
@@ -414,7 +416,7 @@ void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
 		break;
 
 		case ETOH_CLOSED:
-		if (cmd == START_1) {
+		if ((cmd == START_1 && !isCloseAll) && !isAborted) {
 			etohState = ETOH_WAIT;
 		}
 		else if ((cmd == OPEN_ETOH && !isCloseAll) && !isAborted && !isStarted) {
