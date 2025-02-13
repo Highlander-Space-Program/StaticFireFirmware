@@ -27,14 +27,14 @@
 #include "stdbool.h"
 #include "config.h"
 #include "deg_to_ccr.h"
-#include "nos2.h"
-#include "nos1.h"
-#include "n2.h"
-#include "etoh.h"
+#include "eo1.h"
+#include "no6.h"
+#include "no4.h"
+#include "no3.h"
+#include "no2.h"
 #include "create_ack.h"
 #include "igniter.h"
-#include "pwm_enable.h"
-#include "pwm_disable.h"
+#include "servo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +60,7 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+void Tick_Components();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -97,6 +98,7 @@ int main(void)
   MX_TIM4_Init();
   MX_USART3_UART_Init();
   MX_TIM3_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
 
@@ -112,17 +114,17 @@ int main(void)
   {
 	//activates servos
 	if (rx_buff[0] == ACTIVATE_SERVOS) {
-		PWM_Enable();
+		Servo_Enable();
 		isServoEnabled = true;
 	}
 	//deactivates servos
 	else if (rx_buff[0] == DEACTIVATE_SERVOS) {
-		PWM_Disable();
+		Servo_Disable();
 		isServoEnabled = false;
 	}
 	//if we get abort command disable servo signals and set flags
 	if (rx_buff[0] == ABORT) {
-		PWM_Disable();
+		Servo_Disable();
 		isServoEnabled = false;
 		isAborted = true;
 	}
@@ -147,14 +149,7 @@ int main(void)
 		isStarted = false;
 	}
 
-	//ticks calls servo functions if servos have been enabled and abort isn't enabled
-	if (isServoEnabled && !isAborted) {
-		Tick_NOS2(rx_buff[0], &servos[3]);
-		Tick_NOS1(rx_buff[0], &servos[2]);
-		Tick_N2(rx_buff[0], &servos[0]);
-		Tick_ETOH(rx_buff[0], &servos[1]);
-	}
-    Tick_Igniter(rx_buff[0]);
+	Tick_Components();
 
 
     //creates and sends acknowledgement if a new command is received or 5 seconds have passed
@@ -165,10 +160,10 @@ int main(void)
     	ack = 0x00;
     	ticks = 0;
     }
-    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+//    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
     rx_buff[0] = 0xF0;
     ++ticks;
-    HAL_Delay(100);
+    HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -224,7 +219,20 @@ void SystemClock_Config(void)
 //received uart byte gets put into rx_buff and interrupt re-enabled
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+  Tick_Components();
   HAL_UART_Receive_IT(&huart3, rx_buff, 1);
+}
+
+void Tick_Components() {
+	//ticks calls servo functions if servos have been enabled and abort isn't enabled
+	if (isServoEnabled && !isAborted) {
+		Tick_NO2(rx_buff[0], &servos[3]);
+		Tick_NO4(rx_buff[0], &servos[2]);
+		Tick_NO6(rx_buff[0], &servos[0]);
+		Tick_EO1(rx_buff[0], &servos[1]);
+		Tick_NO3(rx_buff[0], &servos[4]);
+	}
+	Tick_Igniter(rx_buff[0]);
 }
 
 

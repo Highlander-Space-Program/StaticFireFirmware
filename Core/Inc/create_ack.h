@@ -11,19 +11,23 @@
 #include "config.h"
 
 uint8_t Create_Ack() {
-	if (nos2State == NOS2_OPENED) {
+	if (no2State == SERVO_OPENED_ON || no2State == SERVO_OPENED_OFF) {
 		++ack;
 	}
 	ack = ack << 1;
-	if (nos1State == NOS1_OPENED) {
+	if (no3State == SERVO_OPENED_ON || no3State == SERVO_OPENED_OFF) {
 		++ack;
 	}
 	ack = ack << 1;
-	if (n2State == N2_OPENED) {
+	if (no4State == SERVO_OPENED_ON || no4State == SERVO_OPENED_OFF) {
 		++ack;
 	}
 	ack = ack << 1;
-	if (etohState == ETOH_OPENED) {
+	if (no6State == SERVO_OPENED_ON || no6State == SERVO_OPENED_OFF) {
+		++ack;
+	}
+	ack = ack << 1;
+	if (eo1State == SERVO_OPENED_ON || eo1State == SERVO_OPENED_OFF) {
 		++ack;
 	}
 	ack = ack << 1;
