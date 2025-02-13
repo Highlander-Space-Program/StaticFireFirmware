@@ -21,11 +21,20 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-#include "stdbool.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "stdbool.h"
+#include "config.h"
+#include "deg_to_ccr.h"
+#include "eo1.h"
+#include "no6.h"
+#include "no4.h"
+#include "no3.h"
+#include "no2.h"
+#include "create_ack.h"
+#include "igniter.h"
+#include "servo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -35,10 +44,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define HSP_SERVO_MIN_PULSE_WIDTH 500
-#define HSP_SERVO_MAX_PULSE_WIDTH 2500
-#define HSP_SERVO_PWM_PERIOD 20000
-#define HSP_SERVO_MAX_DEG 180
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -55,67 +60,11 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-struct Servo;
-uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo);
+void Tick_Components();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-struct Servo {
-  const char* pnid;
-  const TIM_HandleTypeDef *timer;
-  volatile uint32_t *ccr;
-};
-
-bool etoh_just_opened = false;
-int etoh_cnt = 0;
-bool isCloseAll = false;
-bool isAborted = false;
-bool isServoEnabled = false;
-bool isStarted = false;
-uint8_t ack = 0x00;
-
-void Tick_NOS2 (uint8_t cmd, struct Servo *servo);
-void Tick_NOS1 (uint8_t cmd, struct Servo *servo);
-void Tick_N2 (uint8_t cmd, struct Servo *servo);
-void Tick_ETOH (uint8_t cmd, struct Servo *servo);
-void Tick_Igniter(uint8_t cmd);
-void PWM_Enable();
-void PWM_Disable();
-uint8_t Create_Ack();
-
-enum COMMANDS {
-  OPEN_NOS2 = 0,
-  CLOSE_NOS2 = 1,
-  OPEN_NOS1 = 2,
-  CLOSE_NOS1 = 3,
-  OPEN_N2 = 4,
-  CLOSE_N2 = 5,
-  OPEN_ETOH = 6,
-  CLOSE_ETOH = 7,
-  START_1 = 8,
-  FILL_1 = 9,
-  FILL_2 = 10,
-  FILL_3 = 11,
-  CLOSE_ALL = 12,
-  DECLOSE_ALL = 13,
-  ACTIVATE_IGNITER = 14,
-  DEACTIVATE_IGNITER = 15,
-  ABORT = 16,
-  ACTIVATE_SERVOS = 17,
-  DEACTIVATE_SERVOS = 18,
-  DEABORT = 19,
-  CHECK_STATE = 20,
-  DESTART = 21
-};
-
-enum NOS2_STATE {NOS2_INIT, NOS2_CLOSED, NOS2_OPENED} nos2State = NOS2_INIT;
-enum NOS1_STATE {NOS1_INIT, NOS1_CLOSED, NOS1_OPENED} nos1State = NOS1_INIT;
-enum N2_STATE {N2_INIT, N2_CLOSED, N2_OPENED} n2State = N2_INIT;
-enum ETOH_STATE {ETOH_INIT, ETOH_CLOSED, ETOH_WAIT, ETOH_OPENED} etohState = ETOH_INIT;
-enum IGNITER_STATE {IGNITER_INIT, IGNITER_DEACTIVATED, IGNITER_ACTIVATED} igniterState = IGNITER_INIT;
-uint8_t rx_buff[1];
-uint8_t tx_buff[1];
 /* USER CODE END 0 */
 
 /**
@@ -149,15 +98,11 @@ int main(void)
   MX_TIM4_Init();
   MX_USART3_UART_Init();
   MX_TIM3_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
 
-  struct Servo servos[] = {
-          {"FV-02", &htim4, &TIM4->CCR1},
-          {"FV-03", &htim4, &TIM4->CCR2},
-          {"FV-04", &htim4, &TIM4->CCR3},
-          {"FV-08", &htim3, &TIM3->CCR1}
-  };
+
   HAL_UART_Receive_IT(&huart3, rx_buff, 1);
 
 
@@ -167,58 +112,58 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	//activates servos
 	if (rx_buff[0] == ACTIVATE_SERVOS) {
-		PWM_Enable();
+		Servo_Enable();
 		isServoEnabled = true;
 	}
+	//deactivates servos
 	else if (rx_buff[0] == DEACTIVATE_SERVOS) {
-		PWM_Disable();
+		Servo_Disable();
 		isServoEnabled = false;
 	}
-
+	//if we get abort command disable servo signals and set flags
 	if (rx_buff[0] == ABORT) {
-		PWM_Disable();
+		Servo_Disable();
 		isServoEnabled = false;
 		isAborted = true;
 	}
+	//remove abort flag if deabort
 	else if (rx_buff[0] == DEABORT) {
 		isAborted = false;
 	}
-
+	//set close all flag if we get close all cmd
 	if (rx_buff[0] == CLOSE_ALL) {
 		isCloseAll = true;
 	}
+	//remove close all flag if we get declose all cmd
 	else if (rx_buff[0] == DECLOSE_ALL) {
 		isCloseAll = false;
 	}
-
+	//set started flag if we get start cmd
 	if (rx_buff[0] == START_1) {
 		isStarted = true;
 	}
+	//removes started flag if we get destart cmd
 	if (rx_buff[0] == DESTART) {
 		isStarted = false;
 	}
 
-	if (isServoEnabled && !isAborted) {
-		Tick_NOS2(rx_buff[0], &servos[3]);
-		Tick_NOS1(rx_buff[0], &servos[2]);
-		Tick_N2(rx_buff[0], &servos[0]);
-		Tick_ETOH(rx_buff[0], &servos[1]);
-	}
-    Tick_Igniter(rx_buff[0]);
+	Tick_Components();
 
 
-
-    if (rx_buff[0] != 0xF0) {
+    //creates and sends acknowledgement if a new command is received or 5 seconds have passed
+    if (rx_buff[0] != 0xF0 || ticks >= 50) {
     	Create_Ack();
     	tx_buff[0] = ack;
     	HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
     	ack = 0x00;
+    	ticks = 0;
     }
-    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
+//    HAL_GPIO_TogglePin(BUILTIN_LED_GPIO_Port, BUILTIN_LED_Pin);
     rx_buff[0] = 0xF0;
-
-    HAL_Delay(100);
+    ++ticks;
+    HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -268,294 +213,28 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-uint32_t Deg_To_CCR(uint8_t deg, const struct Servo *servo) {
-  uint32_t arr = servo->timer->Init.Period;
-  double pulse_width = ((double)HSP_SERVO_MAX_PULSE_WIDTH-HSP_SERVO_MIN_PULSE_WIDTH)/HSP_SERVO_MAX_DEG * deg + HSP_SERVO_MIN_PULSE_WIDTH;
-  return pulse_width*arr/HSP_SERVO_PWM_PERIOD;
-}
 
+
+
+//received uart byte gets put into rx_buff and interrupt re-enabled
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+  Tick_Components();
   HAL_UART_Receive_IT(&huart3, rx_buff, 1);
 }
 
-void Tick_NOS2 (uint8_t cmd, struct Servo *servo) {
-	//transitions
-	switch(nos2State) {
-		case NOS2_INIT:
-		nos2State = NOS2_CLOSED;
-		break;
-
-		case NOS2_CLOSED:
-		if (((cmd == OPEN_NOS2 && !isCloseAll) && !isAborted)
-			|| ((cmd == START_1 && !isCloseAll) && !isAborted)) {
-			nos2State = NOS2_OPENED;
-		}
-		else {
-			nos2State = NOS2_CLOSED;
-		}
-		break;
-
-		case NOS2_OPENED:
-		if ((cmd == CLOSE_NOS2 || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
-			nos2State = NOS2_CLOSED;
-		}
-		else {
-			nos2State = NOS2_OPENED;
-		}
-		break;
+void Tick_Components() {
+	//ticks calls servo functions if servos have been enabled and abort isn't enabled
+	if (isServoEnabled && !isAborted) {
+		Tick_NO2(rx_buff[0], &servos[3]);
+		Tick_NO4(rx_buff[0], &servos[2]);
+		Tick_NO6(rx_buff[0], &servos[0]);
+		Tick_EO1(rx_buff[0], &servos[1]);
+		Tick_NO3(rx_buff[0], &servos[4]);
 	}
-
-	//actions
-	switch(nos2State) {
-		case NOS2_INIT:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case NOS2_CLOSED:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case NOS2_OPENED:
-		*servo->ccr = Deg_To_CCR(90, servo);
-		break;
-	}
+	Tick_Igniter(rx_buff[0]);
 }
 
-void Tick_NOS1 (uint8_t cmd, struct Servo *servo) {
-	//transitions
-	switch(nos1State) {
-		case NOS1_INIT:
-		nos1State = NOS1_CLOSED;
-		break;
-
-		case NOS1_CLOSED:
-		if (((cmd == OPEN_NOS1 && !isCloseAll) && !isAborted && !isStarted)) {
-			nos1State = NOS1_OPENED;
-		}
-		else {
-			nos1State = NOS1_CLOSED;
-		}
-		break;
-
-		case NOS1_OPENED:
-		if ((cmd == CLOSE_NOS1 || cmd == CLOSE_ALL || cmd == START_1) && !isAborted) {
-			nos1State = NOS1_CLOSED;
-		}
-		else {
-			nos1State = NOS1_OPENED;
-		}
-		break;
-	}
-
-	//actions
-	switch(nos1State) {
-		case NOS1_INIT:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case NOS1_CLOSED:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case NOS1_OPENED:
-		*servo->ccr = Deg_To_CCR(90, servo);
-		break;
-	}
-}
-
-void Tick_N2 (uint8_t cmd, struct Servo *servo) {
-	//transitions
-	switch(n2State) {
-		case N2_INIT:
-		n2State = N2_CLOSED;
-		break;
-
-		case N2_CLOSED:
-		if (((cmd == OPEN_N2 && !isCloseAll) && !isAborted)
-			|| ((cmd == START_1 && !isCloseAll) && !isAborted)) {
-			n2State = N2_OPENED;
-		}
-		else {
-			n2State = N2_CLOSED;
-		}
-		break;
-
-		case N2_OPENED:
-		if ((cmd == CLOSE_N2 || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
-			n2State = N2_CLOSED;
-		}
-		else {
-			n2State = N2_OPENED;
-		}
-		break;
-	}
-
-	//actions
-	switch(n2State) {
-		case N2_INIT:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case N2_CLOSED:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		break;
-
-		case N2_OPENED:
-		*servo->ccr = Deg_To_CCR(90, servo);
-		break;
-	}
-}
-
-void Tick_ETOH (uint8_t cmd, struct Servo *servo) {
-	//transitions
-	switch(etohState) {
-		case ETOH_INIT:
-		etohState = ETOH_CLOSED;
-		break;
-
-		case ETOH_CLOSED:
-		if (cmd == START_1) {
-			etohState = ETOH_WAIT;
-		}
-		else if ((cmd == OPEN_ETOH && !isCloseAll) && !isAborted && !isStarted) {
-			etohState = ETOH_OPENED;
-		}
-		else {
-			etohState = ETOH_CLOSED;
-		}
-		break;
-
-		case ETOH_WAIT:
-		if (cmd == ABORT) {
-			etohState = ETOH_CLOSED;
-		}
-		else if (etoh_cnt > 4) {
-			etoh_just_opened = true;
-			etohState = ETOH_OPENED;
-		}
-		break;
-
-		case ETOH_OPENED:
-		if (etoh_just_opened == true) {
-			etoh_just_opened = false;
-			ack = 0x00;
-			Create_Ack();
-			tx_buff[0] = ack;
-			HAL_UART_Transmit_IT(&huart3, tx_buff, 1);
-		}
-		if ((cmd == CLOSE_ETOH || cmd == CLOSE_ALL) && !isAborted && !isStarted) {
-			etohState = ETOH_CLOSED;
-		}
-		else {
-			etohState = ETOH_OPENED;
-		}
-		break;
-	}
-
-	//actions
-	switch(etohState) {
-		case ETOH_INIT:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		etoh_cnt = 0;
-		break;
-
-		case ETOH_CLOSED:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		etoh_cnt = 0;
-		break;
-
-		case ETOH_WAIT:
-		*servo->ccr = Deg_To_CCR(0, servo);
-		++etoh_cnt;
-		break;
-
-		case ETOH_OPENED:
-		*servo->ccr = Deg_To_CCR(90, servo);
-		break;
-	}
-}
-
-void Tick_Igniter(uint8_t cmd) {
-	//transitions
-	switch(igniterState) {
-		case IGNITER_INIT:
-		igniterState = IGNITER_DEACTIVATED;
-		break;
-
-		case IGNITER_DEACTIVATED:
-		if (cmd == ACTIVATE_IGNITER && (!isCloseAll && !isAborted)) {
-			igniterState = IGNITER_ACTIVATED;
-		}
-		else {
-			igniterState = IGNITER_DEACTIVATED;
-		}
-		break;
-
-		case IGNITER_ACTIVATED:
-		if (((cmd == DEACTIVATE_IGNITER || cmd == CLOSE_ALL || isCloseAll)  && !isStarted) || cmd == ABORT) {
-			igniterState = IGNITER_DEACTIVATED;
-		}
-		else {
-			igniterState = IGNITER_ACTIVATED;
-		}
-		break;
-	}
-
-	//actions
-	switch(igniterState) {
-		case IGNITER_INIT:
-		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_RESET);
-		break;
-
-		case IGNITER_DEACTIVATED:
-		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_RESET);
-		break;
-
-		case IGNITER_ACTIVATED:
-		HAL_GPIO_WritePin(GPIOC, IGNITER_Pin, GPIO_PIN_SET);
-		break;
-	}
-}
-
-void PWM_Enable() {
-	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
-	  HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
-	  //HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
-	  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-}
-
-void PWM_Disable() {
-	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_1);
-	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_2);
-	  HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_3);
-	  //HAL_TIM_PWM_Stop(&htim4, TIM_CHANNEL_4);
-	  HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
-}
-
-uint8_t Create_Ack() {
-	if (nos2State == NOS2_OPENED) {
-		++ack;
-	}
-	ack = ack << 1;
-	if (nos1State == NOS1_OPENED) {
-		++ack;
-	}
-	ack = ack << 1;
-	if (n2State == N2_OPENED) {
-		++ack;
-	}
-	ack = ack << 1;
-	if (etohState == ETOH_OPENED) {
-		++ack;
-	}
-	ack = ack << 1;
-	if (igniterState == IGNITER_ACTIVATED) {
-		++ack;
-	}
-	return ack;
-}
 
 /* USER CODE END 4 */
 
